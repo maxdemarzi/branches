@@ -10,9 +10,13 @@
 
     <properties>
         <neo4j.version>3.4.9</neo4j.version>
+        <janino.version>3.0.8</janino.version>
         <clojure.version>1.9.0</clojure.version>
         <opencsv.version>4.3.2</opencsv.version>
         <jblas.version>1.2.4</jblas.version>
+        <math3.version>3.6.1</math3.version>
+        <junit.version>4.12</junit.version>
+        <neo4j-driver.version>1.7.0</neo4j-driver.version>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
@@ -30,6 +34,22 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Janino Dependencies -->
+        <!-- Due to some packaging error in Neo4j (as of 3.3.1), these have to be included manually in the plugins folder. -->
+        <dependency>
+            <groupId>org.codehaus.janino</groupId>
+            <artifactId>janino</artifactId>
+            <version>${janino.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.codehaus.janino</groupId>
+            <artifactId>commons-compiler</artifactId>
+            <version>${janino.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.clojure</groupId>
             <artifactId>clojure</artifactId>
@@ -39,18 +59,19 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-math3</artifactId>
-            <version>3.6.1</version>
+            <version>${math3.version}</version>
         </dependency>
         <dependency>
             <groupId>org.jblas</groupId>
             <artifactId>jblas</artifactId>
-            <version>1.2.4</version>
+            <version>${jblas.version}</version>
         </dependency>
         <dependency>
             <groupId>com.opencsv</groupId>
             <artifactId>opencsv</artifactId>
             <version>${opencsv.version}</version>
         </dependency>
+
         <!-- Test Dependencies -->
         <dependency>
             <!-- This is used for a utility that lets us start Neo4j with
@@ -65,14 +86,14 @@
             <!-- Used to send cypher statements to our procedure. -->
             <groupId>org.neo4j.driver</groupId>
             <artifactId>neo4j-java-driver</artifactId>
-            <version>1.6.1</version>
+            <version>${neo4j-driver.version}</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.12</version>
+            <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

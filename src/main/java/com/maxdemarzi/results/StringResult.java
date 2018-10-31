@@ -1,4 +1,4 @@
-package com.maxdemarzi;
+package com.maxdemarzi.results;
 
 public class StringResult {
     public final static StringResult EMPTY = new StringResult(null);

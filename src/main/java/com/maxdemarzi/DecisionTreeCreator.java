@@ -2,6 +2,9 @@ package com.maxdemarzi;
 
 import clojure.java.api.Clojure;
 import clojure.lang.*;
+import com.maxdemarzi.results.StringResult;
+import com.maxdemarzi.schema.Labels;
+import com.maxdemarzi.schema.RelationshipTypes;
 import com.opencsv.CSVIterator;
 import com.opencsv.CSVReader;
 import org.jblas.DoubleMatrix;
@@ -12,11 +15,10 @@ import org.neo4j.procedure.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class Branches {
+public class DecisionTreeCreator {
 
     // This field declares that we need a GraphDatabaseService
     // as context when any procedure in this class is invoked
@@ -28,10 +30,10 @@ public class Branches {
     @Context
     public Log log;
 
-    @Procedure(name = "com.maxdemarzi.branches", mode = Mode.WRITE)
-    @Description("CALL com.maxdemarzi.branches(tree, data, answers, threshold) - traverse paths")
-    public Stream<StringResult> branches(@Name("tree") String tree, @Name("data") String data,
-                                         @Name("answers") String answers, @Name("threshold") Double threshold ) {
+    @Procedure(name = "com.maxdemarzi.decision_tree.create", mode = Mode.WRITE)
+    @Description("CALL com.maxdemarzi.decision_tree.create(tree, data, answers, threshold) - create tree")
+    public Stream<StringResult> create(@Name("tree") String tree, @Name("data") String data,
+                                       @Name("answers") String answers, @Name("threshold") Double threshold ) {
         long start = System.nanoTime();
 
 
@@ -86,14 +88,15 @@ public class Branches {
         HashMap dStreamM = new HashMap<>((PersistentArrayMap) trainFunc.invoke(X, rowIndices, threshold));
 
         Node treeNode = db.createNode(Labels.Tree);
-        treeNode.setProperty("name", tree);
+        treeNode.setProperty("id", tree);
         HashMap<String, Node> nodes = new HashMap<>();
-        deepLinkMap(db, answerMap, nodes, headers, treeNode, RelationshipTypes.HAS, dStreamM);
+        deepLinkMap(db, answerMap, nodes, headers, treeNode, RelationshipTypes.HAS, dStreamM, 0);
 
         return Stream.of(new StringResult("Tree created in " + TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - start) + " seconds"));
     }
 
-    static void deepLinkMap(GraphDatabaseService db, HashMap<Double, Node> answerMap, HashMap<String, Node> nodes, String[] headers, Node parent, RelationshipType relType, HashMap nestedMap) {
+    static void deepLinkMap(GraphDatabaseService db, HashMap<Double, Node> answerMap, HashMap<String, Node> nodes, String[] headers, Node parent, RelationshipType relType, HashMap nestedMap, int level) {
+//        System.out.println("linking");
         // We are at a Leaf
         if (nestedMap.size() == 2) {
             Keyword labelCounts = (Keyword)nestedMap.keySet().toArray()[0];
@@ -110,8 +113,11 @@ public class Branches {
             Double threshold = (Double) nestedMap.get(thresholdSymbol);
             int featureId = Math.toIntExact((Long) nestedMap.get(featureIdSymbol));
 
-            String key = headers[featureId] + "-" + threshold;
-
+            String key = headers[featureId] + "-" + threshold + "-" + level;
+            if (key.equals("Age-43.0")) {
+                System.out.println("age !");
+            }
+            level++;
             Node rule = db.createNode(Labels.Rule);
             rule.setProperty("expression", headers[featureId] + " > " + threshold);
             rule.setProperty("parameter_names", headers[featureId]);
@@ -130,15 +136,15 @@ public class Branches {
                     Double leftThreshold = (Double) leftMap.get(leftThresholdSymbol);
                     int leftFeatureId = Math.toIntExact((Long) leftMap.get(leftFeatureIdSymbol));
 
-                    String leftKey = headers[leftFeatureId] + "-" + leftThreshold;
+                    String leftKey = headers[leftFeatureId] + "-" + leftThreshold + "-" + level;
                     if (nodes.keySet().contains(leftKey)) {
                         Node leftNode = nodes.get(leftKey);
                         rule.createRelationshipTo(leftNode, RelationshipTypes.IS_FALSE);
                     } else {
-                        deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap);
+                        deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap, level);
                     }
                 } else {
-                    deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap);
+                    deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap, level);
                 }
             }
 
@@ -151,15 +157,15 @@ public class Branches {
                     Double rightThreshold = (Double) rightMap.get(rightThresholdSymbol);
                     int rightFeatureId = Math.toIntExact((Long) rightMap.get(rightFeatureIdSymbol));
 
-                    String rightKey = headers[rightFeatureId] + "-" + rightThreshold;
+                    String rightKey = headers[rightFeatureId] + "-" + rightThreshold + "-" + level;
                     if (nodes.keySet().contains(rightKey)) {
                         Node rightNode = nodes.get(rightKey);
                         rule.createRelationshipTo(rightNode, RelationshipTypes.IS_TRUE);
                     } else {
-                        deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap);
+                        deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap, level);
                     }
                 } else {
-                    deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap);
+                    deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap, level);
                 }
             }
         }
@@ -171,10 +177,10 @@ public class Branches {
             records = new CSVIterator(new CSVReader(new FileReader(file)));
         } catch (FileNotFoundException e) {
             e.printStackTrace();
-            log.error("Branches - File not found: " + file);
+            log.error("DecisionTreeCreator - File not found: " + file);
         } catch (IOException e) {
             e.printStackTrace();
-            log.error("Branches - IO Exception: " + file);
+            log.error("DecisionTreeCreator - IO Exception: " + file);
         }
         return records;
     }

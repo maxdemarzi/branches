@@ -1,4 +1,4 @@
-RevolvingUtilizationOfUnsecuredLines,age,NumberOfTime30-59DaysPastDueNotWorse,DebtRatio,MonthlyIncome,NumberOfOpenCreditLinesAndLoans,NumberOfTimes90DaysLate,NumberRealEstateLoansOrLines,NumberOfTime60-89DaysPastDueNotWorse,NumberOfDependents
+RevolvingUtilizationOfUnsecuredLines,Age,NumberOfTime30to59DaysPastDueNotWorse,DebtRatio,MonthlyIncome,NumberOfOpenCreditLinesAndLoans,NumberOfTimes90DaysLate,NumberRealEstateLoansOrLines,NumberOfTime60to89DaysPastDueNotWorse,NumberOfDependents
 0.7661,45,2,0.803,9120,13,0,6,0,2
 0.9572,40,0,0.1219,2600,4,0,0,0,1
 0.6582,38,1,0.08511,3042,2,1,0,0,0
