@@ -96,7 +96,7 @@ public class DecisionTreeCreator {
     }
 
     static void deepLinkMap(GraphDatabaseService db, HashMap<Double, Node> answerMap, HashMap<String, Node> nodes, String[] headers, Node parent, RelationshipType relType, HashMap nestedMap, int level) {
-//        System.out.println("linking");
+
         // We are at a Leaf
         if (nestedMap.size() == 2) {
             Keyword labelCounts = (Keyword)nestedMap.keySet().toArray()[0];
@@ -114,10 +114,7 @@ public class DecisionTreeCreator {
             int featureId = Math.toIntExact((Long) nestedMap.get(featureIdSymbol));
 
             String key = headers[featureId] + "-" + threshold + "-" + level;
-            if (key.equals("Age-43.0")) {
-                System.out.println("age !");
-            }
-            level++;
+
             Node rule = db.createNode(Labels.Rule);
             rule.setProperty("expression", headers[featureId] + " > " + threshold);
             rule.setProperty("parameter_names", headers[featureId]);
@@ -136,15 +133,16 @@ public class DecisionTreeCreator {
                     Double leftThreshold = (Double) leftMap.get(leftThresholdSymbol);
                     int leftFeatureId = Math.toIntExact((Long) leftMap.get(leftFeatureIdSymbol));
 
-                    String leftKey = headers[leftFeatureId] + "-" + leftThreshold + "-" + level;
+                    String leftKey = headers[leftFeatureId] + "-" + leftThreshold + "-" + (level + 1);
+
                     if (nodes.keySet().contains(leftKey)) {
                         Node leftNode = nodes.get(leftKey);
                         rule.createRelationshipTo(leftNode, RelationshipTypes.IS_FALSE);
                     } else {
-                        deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap, level);
+                        deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap, level + 1);
                     }
                 } else {
-                    deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap, level);
+                    deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap, level + 1);
                 }
             }
 
@@ -157,15 +155,16 @@ public class DecisionTreeCreator {
                     Double rightThreshold = (Double) rightMap.get(rightThresholdSymbol);
                     int rightFeatureId = Math.toIntExact((Long) rightMap.get(rightFeatureIdSymbol));
 
-                    String rightKey = headers[rightFeatureId] + "-" + rightThreshold + "-" + level;
+                    String rightKey = headers[rightFeatureId] + "-" + rightThreshold + "-" + (level + 1);
+
                     if (nodes.keySet().contains(rightKey)) {
                         Node rightNode = nodes.get(rightKey);
                         rule.createRelationshipTo(rightNode, RelationshipTypes.IS_TRUE);
                     } else {
-                        deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap, level);
+                        deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap, level + 1);
                     }
                 } else {
-                    deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap, level);
+                    deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap, level + 1);
                 }
             }
         }
