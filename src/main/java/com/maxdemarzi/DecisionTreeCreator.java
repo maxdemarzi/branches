@@ -9,6 +9,7 @@ import com.opencsv.CSVIterator;
 import com.opencsv.CSVReader;
 import org.jblas.DoubleMatrix;
 import org.neo4j.graphdb.*;
+import org.neo4j.helpers.collection.Pair;
 import org.neo4j.logging.Log;
 import org.neo4j.procedure.*;
 
@@ -96,6 +97,8 @@ public class DecisionTreeCreator {
     }
 
     static void deepLinkMap(GraphDatabaseService db, HashMap<Double, Node> answerMap, HashMap<String, Node> nodes, String[] headers, Node parent, RelationshipType relType, HashMap nestedMap) {
+        RelationshipType leftType = RelationshipTypes.IS_FALSE;
+        RelationshipType rightType = RelationshipTypes.IS_TRUE;
 
         // We are at a Leaf
         if (nestedMap.size() == 2) {
@@ -108,59 +111,110 @@ public class DecisionTreeCreator {
                 rel.setProperty("weight", weight);
             }
         } else {
-
-            String key = getKey(nestedMap);
             Node rule;
-            if(nodes.containsKey(key)) {
-                rule = nodes.get(key);
-            } else {
-                rule = db.createNode(Labels.Rule);
-                String[] keyParts = key.split("-");
-                String feature = headers[Integer.valueOf(keyParts[0])];
-                rule.setProperty("expression", feature + " > " + keyParts[1]);
-                rule.setProperty("parameter_names", feature);
-                rule.setProperty("parameter_types", "double");
-                nodes.put(key, rule);
+            String key = getKey(headers, nestedMap);
+            String[] keyParts = key.split("-");
+            String feature = keyParts[0];
+            String threshold = keyParts[1];
+
+            String parentFeature = (String)parent.getProperty("parameter_names", "");
+            boolean even = false;
+            if (relType.name().startsWith("OPTION")) {
+                even = (Integer.valueOf(relType.name().split("_")[1]) % 2) == 0;
             }
-            parent.createRelationshipTo(rule, relType);
+
+            // Only valid for IS_FALSE same feature children nodes
+            if(feature.equals(parentFeature) && !relType.name().equals("IS_TRUE") && (even || relType.name().equals("IS_FALSE"))) {
+                rule = parent;
+                ArrayList<Pair<String, String>> options = new ArrayList<>();
+                String[] values;
+                if (rule.hasProperty("values")){
+                    values = (String[])rule.getProperty("values");
+                } else {
+                    String previousThreshold = ((String)rule.getProperty("expression")).split(" > ")[1];
+                    values = new String[]{previousThreshold};
+                }
+                ArrayList<String> thresholds = new ArrayList<>(Arrays.asList(values));
+                thresholds.add(threshold);
+
+                options.add(Pair.of(feature + " > " + thresholds.get(0), "\"IS_TRUE\""));
+
+                for (int i = 1; i < thresholds.size(); i++) {
+                    options.add(Pair.of(feature + " <= " + thresholds.get(i - 1) + " && " + feature + " > " + thresholds.get(i), "\"OPTION_" + options.size() + "\""));
+                    options.add(Pair.of(feature + " <= " + thresholds.get(i - 1) + " && " + feature + " <= " + thresholds.get(i), "\"OPTION_" + options.size() + "\""));
+                }
+
+                rightType = RelationshipType.withName("OPTION_" + (options.size() - 2));
+                leftType = RelationshipType.withName("OPTION_" + (options.size() - 1));
+                rule.setProperty("values", thresholds.toArray(new String[]{}));
+                rule.removeProperty("expression");
+
+                //todo move this to the threshold loop
+                // Delete redundant options
+                for (int i = 2; i < options.size() - 2; i+=2) {
+                    options.remove(i);
+                }
+
+                StringBuilder script = new StringBuilder();
+                for (Pair<String, String> pair : options) {
+                    script.append(" if (").append(pair.first()).append(") { return ").append(pair.other()).append(";} ");
+                }
+                rule.setProperty("script", script.toString());
+                nodes.put(key, rule);
+            } else {
+                if (nodes.containsKey(key)) {
+                    rule = nodes.get(key);
+                } else {
+                    rule = db.createNode(Labels.Rule);
+                    rule.setProperty("expression", feature + " > " + threshold);
+                    rule.setProperty("parameter_names", feature);
+                    rule.setProperty("parameter_types", "double");
+                    nodes.put(key, rule);
+                }
+                parent.createRelationshipTo(rule, relType);
+            }
 
             Symbol left = (Symbol) nestedMap.keySet().toArray()[2];
             HashMap leftMap = new HashMap<>((PersistentArrayMap) ((Atom) nestedMap.get(left)).deref());
-            String leftKey = getKey(leftMap);
+            String leftKey = getKey(headers, leftMap);
 
             if (nodes.keySet().contains(leftKey)) {
                 Node leftNode = nodes.get(leftKey);
-                rule.createRelationshipTo(leftNode, RelationshipTypes.IS_FALSE);
+                rule.createRelationshipTo(leftNode, leftType);
             } else {
-                deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap);
+                deepLinkMap(db, answerMap, nodes, headers, rule, leftType, leftMap);
             }
 
             Symbol right = (Symbol) nestedMap.keySet().toArray()[3];
             HashMap rightMap = new HashMap<>((PersistentArrayMap) ((Atom) nestedMap.get(right)).deref());
-            String rightKey = getKey(rightMap);
+            String rightKey = getKey(headers, rightMap);
 
             if (nodes.keySet().contains(rightKey)) {
                 Node rightNode = nodes.get(rightKey);
-                rule.createRelationshipTo(rightNode, RelationshipTypes.IS_TRUE);
+                rule.createRelationshipTo(rightNode, rightType);
             } else {
-                deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap);
+                deepLinkMap(db, answerMap, nodes, headers, rule, rightType, rightMap);
             }
         }
     }
 
-    private static String getKey(HashMap map) {
+    private static String getKey(String[] headers, HashMap map) {
         Double threshold = -1.0;
         int featureId = -1;
         Double leftThreshold = -1.0;
         int leftFeatureId = -1;
         Double rightThreshold = -1.0;
         int rightFeatureId = -1;
+        String feature = "leaf";
+        String leftFeature = "leaf";
+        String rightFeature = "leaf";
 
         if (map.size() > 2) {
             Symbol thresholdSymbol = (Symbol) map.keySet().toArray()[0];
             Symbol featureIdSymbol = (Symbol) map.keySet().toArray()[1];
             threshold = (Double) map.get(thresholdSymbol);
             featureId = Math.toIntExact((Long) map.get(featureIdSymbol));
+            feature = headers[featureId];
 
             Symbol left = (Symbol) map.keySet().toArray()[2];
             HashMap leftMap = new HashMap<>((PersistentArrayMap) ((Atom) map.get(left)).deref());
@@ -169,6 +223,7 @@ public class DecisionTreeCreator {
                 Symbol leftFeatureIdSymbol = (Symbol) leftMap.keySet().toArray()[1];
                 leftThreshold = (Double) leftMap.get(leftThresholdSymbol);
                 leftFeatureId = Math.toIntExact((Long) leftMap.get(leftFeatureIdSymbol));
+                leftFeature = headers[leftFeatureId];
             }
             Symbol right = (Symbol) map.keySet().toArray()[3];
             HashMap rightMap = new HashMap<>((PersistentArrayMap) ((Atom) map.get(right)).deref());
@@ -177,10 +232,10 @@ public class DecisionTreeCreator {
                 Symbol rightFeatureIdSymbol = (Symbol) rightMap.keySet().toArray()[1];
                 rightThreshold = (Double) rightMap.get(rightThresholdSymbol);
                 rightFeatureId = Math.toIntExact((Long) rightMap.get(rightFeatureIdSymbol));
+                rightFeature = headers[rightFeatureId];
             }
         }
-
-        return featureId + "-" + threshold + "-" + leftFeatureId + "-" + leftThreshold + "-" + rightFeatureId + "-" + rightThreshold;
+        return feature + "-" + threshold + "-" + leftFeature + "-" + leftThreshold + "-" + rightFeature + "-" + rightThreshold;
     }
 
     private CSVIterator getCsvIterator(String file) {
