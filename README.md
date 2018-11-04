@@ -34,6 +34,7 @@ Then create a Tree:
         
 Try it:
     
-    CALL com.maxdemarzi.decision_tree.traverse('credit', {RevolvingUtilizationOfUnsecuredLines:'0.7661', Age:'45', NumberOfTime30to59DaysPastDueNotWorse:'2', DebtRatio:'0.803', MonthlyIncome:'9120',NumberOfOpenCreditLinesAndLoans:'13', NumberOfTimes90DaysLate:'0',NumberRealEstateLoansOrLines:'6', NumberOfTime60to89DaysPastDueNotWorse:'0', NumberOfDependents:'2'});
-    CALL com.maxdemarzi.decision_tree.traverse('credit', {RevolvingUtilizationOfUnsecuredLines:'0.9572', Age:'40', NumberOfTime30to59DaysPastDueNotWorse:'20', DebtRatio:'0.1219', MonthlyIncome:'2600',NumberOfOpenCreditLinesAndLoans:'4', NumberOfTimes90DaysLate:'0',NumberRealEstateLoansOrLines:'0', NumberOfTime60to89DaysPastDueNotWorse:'0', NumberOfDependents:'1'});
+    CALL com.maxdemarzi.decision_tree.traverse('credit', {RevolvingUtilizationOfUnsecuredLines:'0.7661', Age:'45', Late30to59Days:'2', DebtRatio:'0.803', MonthlyIncome:'9120',OpenCreditLinesAndLoans:'13', Late90Days:'0',RealEstateLoans:'6', Late60to89Days:'0', Dependents:'2'});
+    CALL com.maxdemarzi.decision_tree.traverse('credit', {RevolvingUtilizationOfUnsecuredLines:'0.9572', Age:'40', Late30to59Days:'20', DebtRatio:'0.1219', MonthlyIncome:'2600',OpenCreditLinesAndLoans:'4', Late90Days:'0',RealEstateLoans:'0', Late60to89Days:'0', Dependents:'1'});
     
+TODO: Rollup the nodes that are the same into multi-select Rule Nodes.

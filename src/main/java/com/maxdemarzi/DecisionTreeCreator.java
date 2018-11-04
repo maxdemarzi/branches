@@ -90,12 +90,12 @@ public class DecisionTreeCreator {
         Node treeNode = db.createNode(Labels.Tree);
         treeNode.setProperty("id", tree);
         HashMap<String, Node> nodes = new HashMap<>();
-        deepLinkMap(db, answerMap, nodes, headers, treeNode, RelationshipTypes.HAS, dStreamM, 0);
+        deepLinkMap(db, answerMap, nodes, headers, treeNode, RelationshipTypes.HAS, dStreamM);
 
         return Stream.of(new StringResult("Tree created in " + TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - start) + " seconds"));
     }
 
-    static void deepLinkMap(GraphDatabaseService db, HashMap<Double, Node> answerMap, HashMap<String, Node> nodes, String[] headers, Node parent, RelationshipType relType, HashMap nestedMap, int level) {
+    static void deepLinkMap(GraphDatabaseService db, HashMap<Double, Node> answerMap, HashMap<String, Node> nodes, String[] headers, Node parent, RelationshipType relType, HashMap nestedMap) {
 
         // We are at a Leaf
         if (nestedMap.size() == 2) {
@@ -108,66 +108,79 @@ public class DecisionTreeCreator {
                 rel.setProperty("weight", weight);
             }
         } else {
-            Symbol thresholdSymbol = (Symbol) nestedMap.keySet().toArray()[0];
-            Symbol featureIdSymbol = (Symbol) nestedMap.keySet().toArray()[1];
-            Double threshold = (Double) nestedMap.get(thresholdSymbol);
-            int featureId = Math.toIntExact((Long) nestedMap.get(featureIdSymbol));
 
-            String key = headers[featureId] + "-" + threshold + "-" + level;
-
-            Node rule = db.createNode(Labels.Rule);
-            rule.setProperty("expression", headers[featureId] + " > " + threshold);
-            rule.setProperty("parameter_names", headers[featureId]);
-            rule.setProperty("parameter_types", "double");
-
-            nodes.put(key, rule);
-
+            String key = getKey(nestedMap);
+            Node rule;
+            if(nodes.containsKey(key)) {
+                rule = nodes.get(key);
+            } else {
+                rule = db.createNode(Labels.Rule);
+                String[] keyParts = key.split("-");
+                String feature = headers[Integer.valueOf(keyParts[0])];
+                rule.setProperty("expression", feature + " > " + keyParts[1]);
+                rule.setProperty("parameter_names", feature);
+                rule.setProperty("parameter_types", "double");
+                nodes.put(key, rule);
+            }
             parent.createRelationshipTo(rule, relType);
 
-            if (nestedMap.size() > 2) {
-                Symbol left = (Symbol) nestedMap.keySet().toArray()[2];
-                HashMap leftMap = new HashMap<>((PersistentArrayMap) ((Atom) nestedMap.get(left)).deref());
-                if (leftMap.size() > 2) {
-                    Symbol leftThresholdSymbol = (Symbol) leftMap.keySet().toArray()[0];
-                    Symbol leftFeatureIdSymbol = (Symbol) leftMap.keySet().toArray()[1];
-                    Double leftThreshold = (Double) leftMap.get(leftThresholdSymbol);
-                    int leftFeatureId = Math.toIntExact((Long) leftMap.get(leftFeatureIdSymbol));
+            Symbol left = (Symbol) nestedMap.keySet().toArray()[2];
+            HashMap leftMap = new HashMap<>((PersistentArrayMap) ((Atom) nestedMap.get(left)).deref());
+            String leftKey = getKey(leftMap);
 
-                    String leftKey = headers[leftFeatureId] + "-" + leftThreshold + "-" + (level + 1);
-
-                    if (nodes.keySet().contains(leftKey)) {
-                        Node leftNode = nodes.get(leftKey);
-                        rule.createRelationshipTo(leftNode, RelationshipTypes.IS_FALSE);
-                    } else {
-                        deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap, level + 1);
-                    }
-                } else {
-                    deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap, level + 1);
-                }
+            if (nodes.keySet().contains(leftKey)) {
+                Node leftNode = nodes.get(leftKey);
+                rule.createRelationshipTo(leftNode, RelationshipTypes.IS_FALSE);
+            } else {
+                deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_FALSE, leftMap);
             }
 
-            if (nestedMap.size() > 3) {
-                Symbol right = (Symbol) nestedMap.keySet().toArray()[3];
-                HashMap rightMap = new HashMap<>((PersistentArrayMap) ((Atom) nestedMap.get(right)).deref());
-                if (rightMap.size() > 2) {
-                    Symbol rightThresholdSymbol = (Symbol) rightMap.keySet().toArray()[0];
-                    Symbol rightFeatureIdSymbol = (Symbol) rightMap.keySet().toArray()[1];
-                    Double rightThreshold = (Double) rightMap.get(rightThresholdSymbol);
-                    int rightFeatureId = Math.toIntExact((Long) rightMap.get(rightFeatureIdSymbol));
+            Symbol right = (Symbol) nestedMap.keySet().toArray()[3];
+            HashMap rightMap = new HashMap<>((PersistentArrayMap) ((Atom) nestedMap.get(right)).deref());
+            String rightKey = getKey(rightMap);
 
-                    String rightKey = headers[rightFeatureId] + "-" + rightThreshold + "-" + (level + 1);
-
-                    if (nodes.keySet().contains(rightKey)) {
-                        Node rightNode = nodes.get(rightKey);
-                        rule.createRelationshipTo(rightNode, RelationshipTypes.IS_TRUE);
-                    } else {
-                        deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap, level + 1);
-                    }
-                } else {
-                    deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap, level + 1);
-                }
+            if (nodes.keySet().contains(rightKey)) {
+                Node rightNode = nodes.get(rightKey);
+                rule.createRelationshipTo(rightNode, RelationshipTypes.IS_TRUE);
+            } else {
+                deepLinkMap(db, answerMap, nodes, headers, rule, RelationshipTypes.IS_TRUE, rightMap);
             }
         }
+    }
+
+    private static String getKey(HashMap map) {
+        Double threshold = -1.0;
+        int featureId = -1;
+        Double leftThreshold = -1.0;
+        int leftFeatureId = -1;
+        Double rightThreshold = -1.0;
+        int rightFeatureId = -1;
+
+        if (map.size() > 2) {
+            Symbol thresholdSymbol = (Symbol) map.keySet().toArray()[0];
+            Symbol featureIdSymbol = (Symbol) map.keySet().toArray()[1];
+            threshold = (Double) map.get(thresholdSymbol);
+            featureId = Math.toIntExact((Long) map.get(featureIdSymbol));
+
+            Symbol left = (Symbol) map.keySet().toArray()[2];
+            HashMap leftMap = new HashMap<>((PersistentArrayMap) ((Atom) map.get(left)).deref());
+            if (leftMap.size() > 2) {
+                Symbol leftThresholdSymbol = (Symbol) leftMap.keySet().toArray()[0];
+                Symbol leftFeatureIdSymbol = (Symbol) leftMap.keySet().toArray()[1];
+                leftThreshold = (Double) leftMap.get(leftThresholdSymbol);
+                leftFeatureId = Math.toIntExact((Long) leftMap.get(leftFeatureIdSymbol));
+            }
+            Symbol right = (Symbol) map.keySet().toArray()[3];
+            HashMap rightMap = new HashMap<>((PersistentArrayMap) ((Atom) map.get(right)).deref());
+            if (rightMap.size() > 2) {
+                Symbol rightThresholdSymbol = (Symbol) rightMap.keySet().toArray()[0];
+                Symbol rightFeatureIdSymbol = (Symbol) rightMap.keySet().toArray()[1];
+                rightThreshold = (Double) rightMap.get(rightThresholdSymbol);
+                rightFeatureId = Math.toIntExact((Long) rightMap.get(rightFeatureIdSymbol));
+            }
+        }
+
+        return featureId + "-" + threshold + "-" + leftFeatureId + "-" + leftThreshold + "-" + rightFeatureId + "-" + rightThreshold;
     }
 
     private CSVIterator getCsvIterator(String file) {

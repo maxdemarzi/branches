@@ -14,7 +14,8 @@ public class CreateTest {
 
     @Rule
     public final Neo4jRule neo4j = new Neo4jRule()
-            .withProcedure(DecisionTreeCreator.class);
+            .withProcedure(DecisionTreeCreator.class)
+            .withProcedure(DecisionTreeTraverser.class);
 
     @Test
     @Ignore
