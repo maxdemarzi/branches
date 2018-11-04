@@ -91,12 +91,12 @@ public class DecisionTreeCreator {
         Node treeNode = db.createNode(Labels.Tree);
         treeNode.setProperty("id", tree);
         HashMap<String, Node> nodes = new HashMap<>();
-        deepLinkMap(db, answerMap, nodes, headers, treeNode, RelationshipTypes.HAS, dStreamM);
+        deepLinkMap(db, answerMap, nodes, headers, treeNode, RelationshipTypes.HAS, dStreamM, true);
 
         return Stream.of(new StringResult("Tree created in " + TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - start) + " seconds"));
     }
 
-    static void deepLinkMap(GraphDatabaseService db, HashMap<Double, Node> answerMap, HashMap<String, Node> nodes, String[] headers, Node parent, RelationshipType relType, HashMap nestedMap) {
+    static void deepLinkMap(GraphDatabaseService db, HashMap<Double, Node> answerMap, HashMap<String, Node> nodes, String[] headers, Node parent, RelationshipType relType, HashMap nestedMap, boolean leftSide) {
         RelationshipType leftType = RelationshipTypes.IS_FALSE;
         RelationshipType rightType = RelationshipTypes.IS_TRUE;
 
@@ -118,13 +118,13 @@ public class DecisionTreeCreator {
             String threshold = keyParts[1];
 
             String parentFeature = (String)parent.getProperty("parameter_names", "");
-            boolean even = false;
-            if (relType.name().startsWith("OPTION")) {
-                even = (Integer.valueOf(relType.name().split("_")[1]) % 2) == 0;
-            }
+//            boolean even = false;
+//            if (relType.name().startsWith("OPTION")) {
+//                even = (Integer.valueOf(relType.name().split("_")[1]) % 2) == 0;
+//            }
 
             // Only valid for IS_FALSE same feature children nodes
-            if(feature.equals(parentFeature) && !relType.name().equals("IS_TRUE") && (even || relType.name().equals("IS_FALSE"))) {
+            if(feature.equals(parentFeature) &&  leftSide) {
                 rule = parent;
                 ArrayList<Pair<String, String>> options = new ArrayList<>();
                 String[] values;
@@ -141,7 +141,9 @@ public class DecisionTreeCreator {
 
                 for (int i = 1; i < thresholds.size(); i++) {
                     options.add(Pair.of(feature + " <= " + thresholds.get(i - 1) + " && " + feature + " > " + thresholds.get(i), "\"OPTION_" + options.size() + "\""));
-                    options.add(Pair.of(feature + " <= " + thresholds.get(i - 1) + " && " + feature + " <= " + thresholds.get(i), "\"OPTION_" + options.size() + "\""));
+                    if (thresholds.size() - i == 1) {
+                        options.add(Pair.of(feature + " <= " + thresholds.get(i - 1) + " && " + feature + " <= " + thresholds.get(i), "\"OPTION_" + options.size() + "\""));
+                    }
                 }
 
                 rightType = RelationshipType.withName("OPTION_" + (options.size() - 2));
@@ -151,9 +153,9 @@ public class DecisionTreeCreator {
 
                 //todo move this to the threshold loop
                 // Delete redundant options
-                for (int i = 2; i < options.size() - 2; i+=2) {
-                    options.remove(i);
-                }
+//                for (int i = 2; i < options.size() - 2; i+=2) {
+//                    options.remove(i);
+//                }
 
                 StringBuilder script = new StringBuilder();
                 for (Pair<String, String> pair : options) {
@@ -182,7 +184,7 @@ public class DecisionTreeCreator {
                 Node leftNode = nodes.get(leftKey);
                 rule.createRelationshipTo(leftNode, leftType);
             } else {
-                deepLinkMap(db, answerMap, nodes, headers, rule, leftType, leftMap);
+                deepLinkMap(db, answerMap, nodes, headers, rule, leftType, leftMap, true);
             }
 
             Symbol right = (Symbol) nestedMap.keySet().toArray()[3];
@@ -193,7 +195,7 @@ public class DecisionTreeCreator {
                 Node rightNode = nodes.get(rightKey);
                 rule.createRelationshipTo(rightNode, rightType);
             } else {
-                deepLinkMap(db, answerMap, nodes, headers, rule, rightType, rightMap);
+                deepLinkMap(db, answerMap, nodes, headers, rule, rightType, rightMap, false);
             }
         }
     }
