@@ -37,7 +37,6 @@ public class DecisionTreeCreator {
                                        @Name("answers") String answers, @Name("threshold") Double threshold ) {
         long start = System.nanoTime();
 
-
         CSVIterator trainingAnswers = getCsvIterator(answers);
         CSVIterator trainingData = getCsvIterator(data);
         Set<Double> answerSet = new HashSet<>();
@@ -56,7 +55,19 @@ public class DecisionTreeCreator {
             answerMap.put(value, answerNode);
         }
 
+        HashMap<String, Node> nodes = new HashMap<>();
         String[] headers = trainingData.next();
+
+        for(int i = 0; i < headers.length; i++) {
+            Node parameter = db.findNode(Labels.Parameter, "name", headers[i]);
+            if (parameter == null) {
+                parameter = db.createNode(Labels.Parameter);
+                parameter.setProperty("name", headers[i]);
+                parameter.setProperty("type", "double");
+                parameter.setProperty("prompt", "What is " + headers[i] + "?");
+            }
+            nodes.put(headers[i], parameter);
+        }
 
         double[][] array = new double[answerList.size()][1 + headers.length];
 
@@ -71,12 +82,8 @@ public class DecisionTreeCreator {
         DoubleMatrix fullData = new DoubleMatrix(array);
 
         fullData = fullData.transpose();
-        int observationCount = fullData.columns;
         int featuresCount = fullData.rows;
         int[] rowIndices = IntStream.range(0, featuresCount).toArray();
-
-        double[][] training = fullData.toArray2();
-
         DoubleMatrix X = fullData.getRows(rowIndices);
 
         /* Import clojure core. */
@@ -90,7 +97,7 @@ public class DecisionTreeCreator {
 
         Node treeNode = db.createNode(Labels.Tree);
         treeNode.setProperty("id", tree);
-        HashMap<String, Node> nodes = new HashMap<>();
+
         deepLinkMap(db, answerMap, nodes, headers, treeNode, RelationshipTypes.HAS, dStreamM, true);
 
         return Stream.of(new StringResult("Tree created in " + TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - start) + " seconds"));
@@ -118,10 +125,6 @@ public class DecisionTreeCreator {
             String threshold = keyParts[1];
 
             String parentFeature = (String)parent.getProperty("parameter_names", "");
-//            boolean even = false;
-//            if (relType.name().startsWith("OPTION")) {
-//                even = (Integer.valueOf(relType.name().split("_")[1]) % 2) == 0;
-//            }
 
             // Only valid for IS_FALSE same feature children nodes
             if(feature.equals(parentFeature) &&  leftSide) {
@@ -151,16 +154,11 @@ public class DecisionTreeCreator {
                 rule.setProperty("values", thresholds.toArray(new String[]{}));
                 rule.removeProperty("expression");
 
-                //todo move this to the threshold loop
-                // Delete redundant options
-//                for (int i = 2; i < options.size() - 2; i+=2) {
-//                    options.remove(i);
-//                }
-
                 StringBuilder script = new StringBuilder();
                 for (Pair<String, String> pair : options) {
                     script.append(" if (").append(pair.first()).append(") { return ").append(pair.other()).append(";} ");
                 }
+                script.append("return \"NONE\";");
                 rule.setProperty("script", script.toString());
                 nodes.put(key, rule);
             } else {
@@ -172,6 +170,8 @@ public class DecisionTreeCreator {
                     rule.setProperty("parameter_names", feature);
                     rule.setProperty("parameter_types", "double");
                     nodes.put(key, rule);
+                    Node parameter = nodes.get(feature);
+                    rule.createRelationshipTo(parameter, RelationshipTypes.REQUIRES);
                 }
                 parent.createRelationshipTo(rule, relType);
             }
