@@ -2,6 +2,7 @@
 POC Decision Stream creator and traverser with rules
 
 This project requires Neo4j 3.4.x or higher
+Some functions are deprecated from Neo4j version 4.x on and need to be changed to make it work.
 
 Instructions
 ------------ 
